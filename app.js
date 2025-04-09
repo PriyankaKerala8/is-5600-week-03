@@ -1,55 +1,82 @@
-const http = require('http');
-const url = require('url');
+const express = require('express');
+const path = require('path');
+const EventEmitter = require('events');
 
 const port = process.env.PORT || 3000;
+const app = express();
+const chatEmitter = new EventEmitter();
 
-// 1. Responds with plain text
+// Serve static files from /public
+app.use(express.static(__dirname + '/public'));
+
+// 1. Serve chat.html on /
+function chatApp(req, res) {
+  res.sendFile(path.join(__dirname, '/chat.html'));
+}
+
+// 2. Return plain text
 function respondText(req, res) {
   res.setHeader('Content-Type', 'text/plain');
   res.end('hi');
 }
 
-// 2. Responds with JSON
+// 3. Return JSON
 function respondJson(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ text: 'hi', numbers: [1, 2, 3] }));
+  res.json({ text: 'hi', numbers: [1, 2, 3] });
 }
 
-// 3. Responds with echo transformations
+// 4. Echo transformation
 function respondEcho(req, res) {
-  const urlObj = new URL(req.url, `http://${req.headers.host}`);
-  const input = urlObj.searchParams.get('input') || '';
+  const { input = '' } = req.query;
 
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({
+  res.json({
     normal: input,
     shouty: input.toUpperCase(),
     charCount: input.length,
     backwards: input.split('').reverse().join('')
-  }));
+  });
 }
 
-// 4. Responds with 404
+// 5. Handle chat messages
+function respondChat(req, res) {
+  const { message } = req.query;
+  chatEmitter.emit('message', message);
+  res.end();
+}
+
+// 6. SSE for live messages
+function respondSSE(req, res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Connection': 'keep-alive',
+  });
+
+  const onMessage = message => {
+    res.write(`data: ${message}\n\n`);
+  };
+
+  chatEmitter.on('message', onMessage);
+
+  res.on('close', () => {
+    chatEmitter.off('message', onMessage);
+  });
+}
+
+// 7. 404 Handler
 function respondNotFound(req, res) {
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('Not Found');
+  res.status(404).send('Not Found');
 }
 
-// ✅ Create server with routing
-const server = http.createServer((req, res) => {
-  const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = parsedUrl.pathname;
+// ✅ ROUTES
+app.get('/', chatApp);
+app.get('/text', respondText); // optional, not required in final version
+app.get('/json', respondJson);
+app.get('/echo', respondEcho);
+app.get('/chat', respondChat);
+app.get('/sse', respondSSE);
+app.use(respondNotFound);
 
-  console.log("Request URL:", pathname);
-
-  if (pathname === '/') return respondText(req, res);
-  if (pathname === '/json') return respondJson(req, res);
-  if (pathname.startsWith('/echo')) return respondEcho(req, res);
-
-  respondNotFound(req, res);
-});
-
-// ✅ Start server
-server.listen(port, () => {
-  console.log(`Server is listening on port ${port}`);
+// ✅ START SERVER
+app.listen(port, () => {
+  console.log(`Listening on port ${port}`);
 });
