@@ -1,12 +1,11 @@
 const express = require('express');
 const path = require('path');
-const EventEmitter = require('events');
+const EventEmitter = require('events'); // 👈 Required for SSE
 
 const port = process.env.PORT || 3000;
 const app = express();
-const chatEmitter = new EventEmitter();
+const chatEmitter = new EventEmitter(); // 👈 Handles chat broadcasts
 
-// Serve static files from /public
 app.use(express.static(__dirname + '/public'));
 
 // 1. Serve chat.html on /
